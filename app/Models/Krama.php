@@ -22,12 +22,12 @@ class Krama extends Model
         'name', 
         'gender', 
         'status', 
-        'banjar_id'
+        'banjar_id',
+        'user_id', // <-- (PERUBAHAN) Tambahkan user_id
     ];
 
     /**
      * Relasi "belongsTo" (milik) ke Banjar.
-     * Satu Krama hanya memiliki satu Banjar.
      */
     public function banjar()
     {
@@ -36,22 +36,27 @@ class Krama extends Model
 
     /**
      * Relasi "hasMany" (memiliki banyak) ke Tagihan.
-     * Satu Krama bisa memiliki banyak Tagihan.
      */
     public function tagihans()
     {
         return $this->hasMany(Tagihan::class, 'krama_id');
     }
+    
+    // --- (PERUBAHAN) Relasi 1-ke-1 ke User ---
+    /**
+     * Satu Krama dimiliki oleh satu User (Akun Login).
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
     /**
-     * ======================================================================
-     * FUNGSI HELPER YANG HILANG (PENYEBAB ERROR 500)
-     * ======================================================================
-     * Accessor/Helper untuk logika Iuran (dari whiteboard).
-     * KramaResource.php memanggil fungsi ini.
+     * FUNGSI HELPER IURAN (Tetap Sama)
      */
     public function getIuranValue(): int
     {
+        // (PERUBAHAN) Tambahkan pengecekan null safety
         switch ($this->status) {
             case 'kramadesa':
                 return 100000;
@@ -59,8 +64,7 @@ class Krama extends Model
             case 'tamiu':
                 return 150000;
             default:
-                return 0;
+                return 0; // Default jika status null
         }
     }
 }
-

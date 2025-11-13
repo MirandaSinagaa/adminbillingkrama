@@ -9,48 +9,42 @@ class Tagihan extends Model
 {
     use HasFactory;
 
-    /**
-     * Tentukan Primary Key sesuai skema Anda.
-     */
     protected $primaryKey = 'tagihan_id';
 
-    /**
-     * Atribut yang dapat diisi secara massal.
-     */
     protected $fillable = [
         'iuran',
         'dedosan',
         'peturuhan',
         'krama_id',
-        'created_by', // ID Admin (User)
+        'created_by', 
         'tanggal',
     ];
 
-    /**
-     * Relasi Many-to-One ke model Krama.
-     * Satu Tagihan dimiliki oleh satu Krama.
-     */
+    // Relasi Krama (Tetap Sama)
     public function krama()
     {
         return $this->belongsTo(Krama::class, 'krama_id');
     }
 
-    /**
-     * Relasi Many-to-One ke model User (Admin).
-     * Satu Tagihan dibuat oleh satu Admin.
-     */
+    // Relasi AdminPembuat (Tetap Sama)
     public function adminPembuat()
     {
-        // 'created_by' adalah foreign key di tabel 'tagihans'
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Relasi One-to-One ke model Pembayaran.
-     * Satu Tagihan memiliki satu Pembayaran.
-     */
+    // Relasi Pembayaran (Tetap Sama)
+    // Ini adalah KUNCI SINKRONISASI ke Admin Panel
     public function pembayaran()
     {
         return $this->hasOne(Pembayaran::class, 'tagihan_id');
+    }
+
+    // --- (PERUBAHAN) Relasi 1-ke-1 ke TransactionDetail ---
+    /**
+     * Satu Tagihan hanya bisa ada di satu Detail Transaksi.
+     */
+    public function transactionDetail()
+    {
+        return $this->hasOne(TransactionDetail::class, 'tagihan_id');
     }
 }

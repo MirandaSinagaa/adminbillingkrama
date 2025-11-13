@@ -3,7 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// --- Import semua Controller yang sudah kita buat ---
+// --- Import semua Controller ---
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\KramaController;
 use App\Http\Controllers\Api\TagihanController;
@@ -11,77 +11,70 @@ use App\Http\Controllers\Api\PembayaranController;
 use App\Http\Controllers\Api\LaporanController;
 use App\Http\Controllers\Api\BanjarController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\UserBillController;
+use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\Api\PaymentConfirmationController;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-|
-| Di sini Anda mendaftarkan rute API untuk aplikasi Anda. Rute-rute ini
-| dimuat oleh RouteServiceProvider dan semuanya akan
-| diberi prefix '/api'.
-|
-*/
+// (PERUBAHAN) Import 3 Controller Baru
+use App\Http\Controllers\Api\UserDashboardController;
+use App\Http\Controllers\Api\UserTransactionController;
+use App\Http\Controllers\Api\UserProfileController;
+
 
 // =========================================================================
 // 1. ENDPOINT PUBLIK (Tidak perlu login)
 // =========================================================================
-// Sesuai modul (src 968), untuk register dan login admin
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/banjar-list-public', [BanjarController::class, 'index']);
 
 
 // =========================================================================
-// 2. ENDPOINT YANG DILINDUNGI (Wajib login sebagai admin)
+// 2. ENDPOINT YANG DILINDUNGI (Wajib login)
 // =========================================================================
-// Sesuai modul (src 967), semua endpoint di dalam grup ini
-// wajib menggunakan 'Bearer Token' dari Sanctum.
 Route::middleware('auth:sanctum')->group(function () {
     
-    // Endpoint Auth (Sesuai modul src 949 & 958)
+    // Endpoint Auth (Global)
     Route::get('/profile', [AuthController::class, 'profile']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
-// --- (BARU) Rute untuk Statistik Dashboard ---
-    Route::get('/dashboard-stats', [DashboardController::class, 'getStats']);
-// --- (BARU) Rute untuk Chart ---
-    Route::get('/dashboard-chart', [DashboardController::class, 'getChartData']);
-
-    // Endpoint KRAMA
-    // Endpoint khusus untuk "Cari NIK" (dari whiteboard Anda)
-    // Harus di atas apiResource agar tidak bentrok
-    Route::get('krama/search/{nik}', [KramaController::class, 'searchByNik']);
-    // Endpoint CRUD standar untuk Krama
-    Route::apiResource('krama', KramaController::class);
+    // ========================
+    // --- Rute Admin Panel ---
+    // ========================
+    Route::prefix('admin')->group(function () {
+        Route::get('/dashboard-stats', [DashboardController::class, 'getStats']);
+        Route::get('/dashboard-chart', [DashboardController::class, 'getChartData']);
+        Route::get('krama/search/{nik}', [KramaController::class, 'searchByNik']);
+        Route::apiResource('krama', KramaController::class);
+        Route::get('/krama/{krama}/history', [KramaController::class, 'getHistory']);
+        Route::apiResource('tagihan', TagihanController::class);
+        Route::apiResource('pembayaran', PembayaranController::class);
+        Route::get('laporan', [LaporanController::class, 'getLaporanBulanan']);
+        Route::get('/krama-list', [KramaController::class, 'getKramaList']);
+        Route::get('/banjar-list', [BanjarController::class, 'index']);
+    });
     
-// --- (RUTE BARU UNTUK IDE #3) ---
-    Route::get('/krama/{krama}/history', [KramaController::class, 'getHistory']);
+    // ========================
+    // --- Rute User Panel ---
+    // ========================
+    Route::prefix('user')->group(function () {
+        // Rute Pembayaran (Sudah ada)
+        Route::get('/my-unpaid-bills', [UserBillController::class, 'getMyUnpaidBills']);
+        Route::get('/search-krama', [UserBillController::class, 'searchKrama']);
+        Route::get('/krama/{krama}/unpaid-bills', [UserBillController::class, 'getKramaUnpaidBills']);
+        Route::post('/checkout', [CheckoutController::class, 'store']);
+        Route::post('/confirm-payment', [PaymentConfirmationController::class, 'store']);
+        
+        // --- (RUTE BARU DARI RENCANA) ---
 
-    // Endpoint TAGIHAN
-    // Endpoint CRUD standar untuk Tagihan
-    // (Fungsi 'store' akan menjalankan logika "Iuran Read Only")
-    Route::apiResource('tagihan', TagihanController::class);
-
-    // Endpoint PEMBAYARAN
-    // Endpoint CRUD standar untuk Pembayaran
-    Route::apiResource('pembayaran', PembayaranController::class);
-
-    // Endpoint LAPORAN
-    // Endpoint khusus untuk "Laporan Bulanan" (dari whiteboard Anda)
-    // * Akan diakses via: GET /api/laporan?bulan=10&tahun=2025
-    Route::get('laporan', [LaporanController::class, 'getLaporanBulanan']);
-
-// --- (RUTE BARU UNTUK FITUR INI) ---
-
-    /**
-     * Rute BARU: Mengambil daftar semua Krama (nama, nik) untuk dropdown
-     * di halaman "Buat Tagihan".
-     */
-    Route::get('/krama-list', [KramaController::class, 'getKramaList']);
-
-    /**
-     * Rute BARU: Mengambil daftar semua Banjar untuk dropdown
-     * di halaman "Tambah Warga".
-     */
-    Route::get('/banjar-list', [BanjarController::class, 'index']);
+        // 1. Rute Dashboard Profesional
+        Route::get('/dashboard-stats', [UserDashboardController::class, 'getStats']);
+        
+        // 2. Rute Riwayat Transaksi
+        Route::get('/my-transactions', [UserTransactionController::class, 'index']);
+        
+        // 3. Rute Edit Profil
+        Route::get('/my-profile', [UserProfileController::class, 'show']);
+        Route::put('/my-profile', [UserProfileController::class, 'update']);
+    });
 });
