@@ -4,95 +4,104 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Pembayaran;
-use App\Models\Tagihan; // <-- Import Tagihan
+use App\Models\Tagihan;
+use App\Services\GoogleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Resources\PembayaranResource;
 use Illuminate\Validation\ValidationException;
-use Carbon\Carbon; // <-- (BARU) Import Carbon untuk tanggal
+use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf; // <-- Import Library PDF
 
 class PembayaranController extends Controller
 {
-    /**
-     * Menampilkan semua data pembayaran.
-     * (Method 'index' Anda tetap sama)
-     */
+    protected $googleService;
+
+    public function __construct(GoogleService $googleService)
+    {
+        $this->googleService = $googleService;
+    }
+
     public function index()
     {
-        $pembayarans = Pembayaran::with('tagihan.krama', 'adminPencatat')
-                        ->latest()->paginate(10);
+        $pembayarans = Pembayaran::with('tagihan.krama', 'pembayar')->latest()->paginate(10);
         return PembayaranResource::collection($pembayarans);
     }
 
-    /**
-     * ==========================================================
-     * (PERUBAHAN BESAR)
-     * Menyimpan data pembayaran baru.
-     * Ini adalah logika untuk tombol "Validasi Lunas".
-     * ==========================================================
-     */
     public function store(Request $request)
     {
-        // 1. Validasi HANYA tagihan_id
         $validated = $request->validate([
             'tagihan_id' => 'required|exists:tagihans,tagihan_id',
         ]);
 
-        $tagihan = Tagihan::find($validated['tagihan_id']);
+        // Load relasi lengkap untuk PDF
+        $tagihan = Tagihan::with('krama.banjar')->find($validated['tagihan_id']);
 
-        // 2. Cek apakah tagihan ini sudah punya pembayaran
         if ($tagihan->pembayaran) {
-            throw ValidationException::withMessages([
-                'tagihan_id' => ['Tagihan ini sudah lunas atau dalam proses.'],
-            ]);
+            throw ValidationException::withMessages(['tagihan_id' => ['Tagihan ini sudah lunas.']]);
         }
 
-        // 3. (BARU) Server OTOMATIS menghitung total
         $totalTagihan = $tagihan->iuran + $tagihan->dedosan + $tagihan->peturuhan;
 
-        // 4. Buat data pembayaran
+        // 1. Simpan Pembayaran ke DB
         $pembayaran = Pembayaran::create([
             'tagihan_id' => $validated['tagihan_id'],
-            'tgl_bayar' => Carbon::now(), // <-- (BARU) Tanggal diisi otomatis
-            'jumlah' => $totalTagihan, // <-- (BARU) Jumlah diisi otomatis
-            'status' => 'selesai', // <-- (BARU) Status langsung 'selesai'
-            'payment_by' => Auth::id(), // ID Admin yang sedang login
+            'tgl_bayar' => Carbon::now(),
+            'jumlah' => $totalTagihan,
+            'status' => 'selesai',
+            'payment_by' => Auth::id(),
         ]);
 
-        return new PembayaranResource($pembayaran->load('tagihan', 'adminPencatat'));
+        // Reload relasi untuk PDF
+        $pembayaran->load('tagihan.krama.banjar', 'pembayar');
+
+        // --- (BARU) GENERATE PDF & UPLOAD KE DRIVE ---
+        try {
+            // a. Buat PDF dari View
+            $pdf = Pdf::loadView('pdf.faktur', ['pembayaran' => $pembayaran]);
+            $pdfContent = $pdf->output(); // Ambil isi file PDF (binary)
+
+            // b. Buat Nama File Unik
+            $namaFile = 'FAKTUR_' . $tagihan->krama->name . '_' . time() . '.pdf';
+            $folderId = env('GOOGLE_DRIVE_FOLDER_ID');
+
+            // c. Upload ke Drive via GoogleService
+            $this->googleService->uploadFileToDrive($folderId, $namaFile, $pdfContent, 'application/pdf');
+
+            // (Opsional) Log sukses
+            \Log::info("Berhasil upload faktur ke Drive: $namaFile");
+
+        } catch (\Exception $e) {
+            \Log::error("Gagal upload PDF ke Drive: " . $e->getMessage());
+            // Jangan hentikan proses jika upload gagal, cukup catat log
+        }
+
+        // --- (BARU) SYNC KE GOOGLE SHEET (Code sebelumnya) ---
+        try {
+            $spreadsheetId = env('GOOGLE_SHEET_ID');
+            $data = [[
+                $tagihan->krama->name ?? 'N/A',
+                "'" . ($tagihan->krama->nik ?? '-'),
+                $tagihan->krama->banjar->nama_banjar ?? '-',
+                Carbon::now()->format('Y-m-d H:i:s'),
+                $totalTagihan,
+                'LUNAS (Validasi Admin)'
+            ]];
+            $this->googleService->appendToSheet($spreadsheetId, 'Sheet1', $data);
+        } catch (\Exception $e) { /* Silent fail */ }
+
+        return new PembayaranResource($pembayaran);
     }
 
-    /**
-     * Menampilkan satu data pembayaran.
-     * (Method 'show' Anda tetap sama)
-     */
     public function show(Pembayaran $pembayaran)
     {
-        return new PembayaranResource(
-            $pembayaran->load('tagihan.krama', 'adminPencatat')
-        );
+        return new PembayaranResource($pembayaran->load('tagihan.krama', 'pembayar'));
     }
-
-    /**
-     * Update data pembayaran.
-     * (Method 'update' Anda tetap sama)
-     */
     public function update(Request $request, Pembayaran $pembayaran)
     {
-        $validated = $request->validate([
-            'tgl_bayar' => 'sometimes|date',
-            'status' => 'sometimes|in:pending,selesai',
-        ]);
-
-        $pembayaran->update($validated);
-        
-        return new PembayaranResource($pembayaran->load('tagihan', 'adminPencatat'));
+        $pembayaran->update($request->validate(['tgl_bayar'=>'sometimes|date','status'=>'sometimes|in:pending,selesai']));
+        return new PembayaranResource($pembayaran->load('tagihan', 'pembayar'));
     }
-
-    /**
-     * Hapus data pembayaran.
-     * (Method 'destroy' Anda tetap sama)
-     */
     public function destroy(Pembayaran $pembayaran)
     {
         $pembayaran->delete();

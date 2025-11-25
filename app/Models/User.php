@@ -6,7 +6,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens; 
+use Laravel\Sanctum\HasApiTokens;
+use App\Models\Transaction;
+use App\Models\Krama;
+use App\Models\Tagihan;
+use App\Models\Pembayaran;
 
 class User extends Authenticatable
 {
@@ -16,15 +20,18 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role', 
+        'role',
     ];
+
     protected $hidden = [
         'password',
         'remember_token',
     ];
+
     protected $attributes = [
         'role' => 'user',
     ];
+
     protected function casts(): array
     {
         return [
@@ -33,28 +40,37 @@ class User extends Authenticatable
         ];
     }
 
-    // --- Relasi Admin (Tetap Sama) ---
     public function tagihanDibuat()
     {
         return $this->hasMany(Tagihan::class, 'created_by');
     }
+
     public function pembayaranDicatat()
     {
         return $this->hasMany(Pembayaran::class, 'payment_by');
     }
 
-    // --- Relasi 1-ke-1 ke Krama (Tetap Sama) ---
     public function krama()
     {
         return $this->hasOne(Krama::class, 'user_id');
     }
 
-    // --- (PERUBAHAN) Relasi 1-ke-Banyak ke Transaction ---
     /**
      * Satu User bisa memiliki banyak Transaksi (Faktur)
      */
     public function transactions()
     {
         return $this->hasMany(Transaction::class, 'user_id');
+    }
+
+    /**
+     * Memeriksa apakah user memiliki role yang spesifik.
+     *
+     * @param string $role
+     * @return bool
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
     }
 }

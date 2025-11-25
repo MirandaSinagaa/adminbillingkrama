@@ -5,18 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Transaction;
-use App\Models\Pembayaran; // <-- Kunci Sinkronisasi
+use App\Models\Pembayaran;
+use App\Services\GoogleService;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon; // Import Carbon
+use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf; // <-- Import Library PDF
 
 class PaymentConfirmationController extends Controller
 {
-    /**
-     * FITUR 4 (Sinkronisasi)
-     * Ini adalah simulasi Webhook / Tombol "Saya Sudah Bayar".
-     * Ini akan mengkonfirmasi Transaksi DAN membuat record Pembayaran
-     * agar Admin Panel ikut terupdate.
-     */
+    protected $googleService;
+
+    public function __construct(GoogleService $googleService)
+    {
+        $this->googleService = $googleService;
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -28,47 +31,77 @@ class PaymentConfirmationController extends Controller
         try {
             DB::beginTransaction();
 
-            // 1. Ambil Transaksi, kunci, dan muat relasi Rincian (Tagihan)
-            $transaction = Transaction::with('details.tagihan')
-                            ->lockForUpdate()
-                            ->findOrFail($transactionId);
+            $transaction = Transaction::with('user', 'details.tagihan.krama.banjar')
+                                ->lockForUpdate()
+                                ->findOrFail($transactionId);
 
-            // 2. Cek apakah sudah dibayar
             if ($transaction->status == 'paid') {
                 return response()->json(['message' => 'Transaksi ini sudah dibayar.'], 422);
             }
 
-            // 3. Ubah status Transaksi (Faktur)
-            $transaction->update([
-                'status' => 'paid',
-            ]);
+            $transaction->update(['status' => 'paid']);
 
-            // 4. (KUNCI UTAMA) Buat record Pembayaran (untuk sinkronisasi Admin)
+            $sheetData = [];
+            $folderId = env('GOOGLE_DRIVE_FOLDER_ID');
+
             foreach ($transaction->details as $detail) {
                 $tagihan = $detail->tagihan;
-
-                // Cek lagi (walaupun kecil kemungkinan)
+                
                 if ($tagihan && !$tagihan->pembayaran) {
-
-                    // Hitung total per tagihan (bukan dari $detail->amount agar aman)
                     $totalTagihan = $tagihan->iuran + $tagihan->dedosan + $tagihan->peturuhan;
-
-                    // Buat record Pembayaran (SAMA SEPERTI PembayaranController)
-                    Pembayaran::create([
+                    
+                    // 1. Buat Pembayaran
+                    $pembayaran = Pembayaran::create([
                         'tagihan_id' => $tagihan->tagihan_id,
                         'tgl_bayar' => Carbon::now(),
                         'jumlah' => $totalTagihan,
                         'status' => 'selesai',
-                        'payment_by' => $transaction->user_id, // Dibayar oleh User
+                        'payment_by' => $transaction->user_id,
                     ]);
+                    
+                    // Reload agar relasi lengkap untuk PDF
+                    $pembayaran->load('tagihan.krama.banjar', 'pembayar');
+
+                    // --- (BARU) GENERATE PDF & UPLOAD KE DRIVE ---
+                    // Kita upload per tagihan agar arsip rapi per warga
+                    try {
+                        $pdf = Pdf::loadView('pdf.faktur', ['pembayaran' => $pembayaran]);
+                        $pdfContent = $pdf->output();
+                        $namaFile = 'FAKTUR_USER_' . $tagihan->krama->name . '_' . time() . '.pdf';
+                        
+                        $this->googleService->uploadFileToDrive($folderId, $namaFile, $pdfContent, 'application/pdf');
+                    } catch (\Exception $e) {
+                        \Log::error("Gagal upload PDF User ke Drive: " . $e->getMessage());
+                    }
+                    // -------------------------------------------
+
+                    $namaPembayar = $transaction->user->name ?? 'User';
+                    $statusText = "LUNAS (Dibayar: $namaPembayar)";
+
+                    $sheetData[] = [
+                        $tagihan->krama->name ?? 'N/A',
+                        "'" . ($tagihan->krama->nik ?? '-'),
+                        $tagihan->krama->banjar->nama_banjar ?? '-',
+                        Carbon::now()->format('Y-m-d H:i:s'),
+                        $totalTagihan,
+                        $statusText
+                    ];
                 }
             }
-
+            
             DB::commit();
 
+            // Sync ke Sheet
+            try {
+                if (!empty($sheetData)) {
+                    $spreadsheetId = env('GOOGLE_SHEET_ID');
+                    $this->googleService->appendToSheet($spreadsheetId, 'Sheet1', $sheetData);
+                }
+            } catch (\Exception $e) { \Log::error('Gagal auto-sync ke Sheet: ' . $e->getMessage()); }
+
             return response()->json([
-                'message' => 'Pembayaran berhasil dikonfirmasi. Status di Admin Panel telah Lunas.',
-                'transaction' => $transaction->load('details.tagihan') // Kirim data final
+                'message' => 'Pembayaran berhasil! Faktur PDF telah diarsipkan ke Google Drive.',
+                'transaction' => $transaction->load('details.tagihan') 
             ]);
 
         } catch (\Exception $e) {

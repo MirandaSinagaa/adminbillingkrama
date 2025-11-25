@@ -7,26 +7,19 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class TagihanResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
-        // ==========================================================
-        //         (INI ADALAH PERBAIKAN LOGIKA)
-        // ==========================================================
-        
-        // Controller Anda (TagihanController@index) sudah me-load relasi 'pembayaran'.
-        // Kita cek di sini.
-        // $this->pembayaran akan 'null' jika tidak ada pembayaran (belum bayar).
-        // $this->pembayaran akan berisi 'objek' jika sudah ada pembayaran.
-        
-        $status = 'belum_bayar'; // Default
+        $status = 'belum_bayar'; 
         if ($this->pembayaran) {
-            // Jika ada objek pembayaran, kita ambil status DARI PEMBAYARAN ITU
-            $status = $this->pembayaran->status; // (e.g., 'pending' atau 'selesai')
+            $status = $this->pembayaran->status; 
+        }
+
+        // Cek apakah ada transaksi pending
+        $pendingTransactionId = null;
+        if ($this->transactionDetail && $this->transactionDetail->transaction) {
+            if ($this->transactionDetail->transaction->status === 'pending') {
+                $pendingTransactionId = $this->transactionDetail->transaction->transaction_id;
+            }
         }
 
         return [
@@ -38,14 +31,25 @@ class TagihanResource extends JsonResource
             'tanggal' => $this->tanggal,
             'created_at' => $this->created_at,
             
-            // Relasi
             'krama' => new KramaResource($this->whenLoaded('krama')),
             'admin_pembuat' => $this->whenLoaded('adminPembuat', function() {
                 return $this->adminPembuat->name;
             }),
             
-            // (DIUBAH) Kirim status yang sudah kita proses di atas
             'status_pembayaran' => $status, 
+
+            'dibayar_oleh' => $this->whenLoaded('pembayaran', function() {
+                if ($this->pembayaran && $this->pembayaran->pembayar) {
+                    return [
+                        'name' => $this->pembayaran->pembayar->name,
+                        'role' => $this->pembayaran->pembayar->role,
+                    ];
+                }
+                return null;
+            }),
+
+            // (BARU) ID Transaksi jika sedang pending
+            'pending_transaction_id' => $pendingTransactionId,
         ];
     }
 }

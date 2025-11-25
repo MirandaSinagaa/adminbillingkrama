@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\PaymentConfirmationController;
 use App\Http\Controllers\Api\UserDashboardController;
 use App\Http\Controllers\Api\UserTransactionController;
 use App\Http\Controllers\Api\UserProfileController;
+use App\Http\Controllers\Api\GoogleIntegrasiController; // <-- Pastikan ini ada!
 
 
 // =========================================================================
@@ -28,7 +29,6 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/banjar-list-public', [BanjarController::class, 'index']);
 
-
 // =========================================================================
 // 2. ENDPOINT YANG DILINDUNGI (Wajib login)
 // =========================================================================
@@ -37,6 +37,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Endpoint Auth (Global)
     Route::get('/profile', [AuthController::class, 'profile']);
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // --- (INI YANG DITAMBAHKAN DARI TUTORIAL) ---
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
+    // --- Batas Penambahan ---
 
     // ========================
     // --- Rute Admin Panel ---
@@ -52,6 +58,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('laporan', [LaporanController::class, 'getLaporanBulanan']);
         Route::get('/krama-list', [KramaController::class, 'getKramaList']);
         Route::get('/banjar-list', [BanjarController::class, 'index']);
+        Route::get('/export-to-sheet', [GoogleIntegrasiController::class, 'exportTagihanToSheet']);
+        Route::get('/test-drive-upload', [GoogleIntegrasiController::class, 'testDriveUpload']);
     });
     
     // ========================
