@@ -12,13 +12,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // 1. Pastikan HandleCors ada di urutan paling atas/awal
-        $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
-
-        // 2. Matikan CSRF untuk API (agar tidak error 419)
+        // Kita matikan CSRF untuk API agar tidak error 419
         $middleware->validateCsrfTokens(except: [
             '*'
         ]);
+        
+        // JANGAN tambahkan HandleCors manual di sini lagi
+        // Laravel 11 akan otomatis membaca file config/cors.php
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
