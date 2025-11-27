@@ -59,7 +59,9 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Gunakan base_path() agar bisa dibaca di Laptop MAUPUN di Render
+                PDO::MYSQL_ATTR_SSL_CA => base_path('tidb-ca.pem'), 
+                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
             ]) : [],
         ],
 
