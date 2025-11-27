@@ -19,6 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
+    // (PENTING) Izinkan semua domain
     'allowed_origins' => ['*'],
 
     'allowed_origins_patterns' => [],
@@ -29,6 +30,7 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    // (PENTING) Harus false jika allowed_origins pakai bintang '*'
+    'supports_credentials' => false, 
 
 ];

@@ -12,16 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        
-        // --- (PERBAIKAN CORS DI SINI) ---
-        $middleware->validateCsrfTokens(except: [
-            '*' // Matikan CSRF untuk API (opsional, tapi aman untuk API token)
-        ]);
-
+        // 1. Pastikan HandleCors ada
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
-        
-        // Konfigurasi Header CORS Manual (Paling Ampuh)
-        $middleware->trustProxies(at: '*');
+
+        // 2. Matikan CSRF untuk API (agar tidak error 419/token mismatch)
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
+            'login',
+            'register',
+            'logout'
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
