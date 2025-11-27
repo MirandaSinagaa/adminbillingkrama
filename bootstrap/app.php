@@ -12,15 +12,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // 1. Pastikan HandleCors ada
+        // 1. Pastikan HandleCors ada di urutan paling atas/awal
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
 
-        // 2. Matikan CSRF untuk API (agar tidak error 419/token mismatch)
+        // 2. Matikan CSRF untuk API (agar tidak error 419)
         $middleware->validateCsrfTokens(except: [
-            'api/*',
-            'login',
-            'register',
-            'logout'
+            '*'
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
