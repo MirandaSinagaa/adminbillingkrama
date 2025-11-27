@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use App\Http\Middleware\Cors; // <--- 1. Import Middleware Baru
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -12,13 +13,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Kita matikan CSRF untuk API agar tidak error 419
+        // 2. Hapus HandleCors bawaan Laravel jika ada, ganti dengan punya kita
+        // Letakkan di urutan paling awal agar dieksekusi duluan
+        $middleware->append(Cors::class);
+
+        // 3. Matikan CSRF untuk API (Wajib untuk API Token)
         $middleware->validateCsrfTokens(except: [
             '*'
         ]);
-        
-        // JANGAN tambahkan HandleCors manual di sini lagi
-        // Laravel 11 akan otomatis membaca file config/cors.php
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
