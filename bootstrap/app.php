@@ -3,7 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request;
+use App\Http\Middleware\ForceCors; // <-- Import Middleware Kita
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,16 +13,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // 1. Paksa Laravel mempercayai Load Balancer Render (Agar HTTPS terdeteksi)
-        $middleware->trustProxies(at: '*');
-        
-        // 2. Pastikan HandleCors jalan paling awal
-        $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
-
-        // 3. Matikan CSRF untuk API
+        // 1. Matikan CSRF untuk API
         $middleware->validateCsrfTokens(except: [
             '*'
         ]);
+
+        // 2. Percayai Proxy (Wajib untuk Render HTTPS)
+        $middleware->trustProxies(at: '*');
+
+        // 3. PAKSA Middleware CORS kita jalan PALING PERTAMA
+        $middleware->prepend(ForceCors::class); 
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
